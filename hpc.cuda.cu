@@ -94,6 +94,65 @@ __global__ void medianFilterGPU(long* histIn, long* histOut, int histSize, int w
 
 }
 
+// read the binary file and perform binning
+int readBinaryFile(const char* filename, long* grid, int histSize) {
+    printf("reading file...\n");
+    FILE *dataFile = fopen(filename, "rb");
+    if (!dataFile) {
+        printf("Unable to open data file.");
+        return -1;
+    }
+    while(!feof(dataFile)) {
+        float x;
+        float y;
+        fread(&x, 1, sizeof(float), dataFile);
+        fread(&y, 1, sizeof(float), dataFile);
+        // get bins
+        int xpos = (int) (x * (histSize - 1));
+        int ypos = (int) (y * (histSize - 1));
+        //
+        if (ypos * histSize + xpos < histSize * histSize) {
+            grid[ypos * histSize + xpos] += 1;
+        } else {
+            printf("Happy hunting %d %d because of %f %f", xpos, ypos, x, y);
+        }
+    }
+    fclose(dataFile);
+    return 1;
+}
+
+// read the already written CSV histogram
+int readHistogramCsvFile(const char* filename, long* grid, int histSize) {
+    printf("Reading histogram file...\n");
+    char buffer[10240];
+    FILE *dataFile = fopen(filename, "r");
+    if (dataFile == NULL) {
+         printf("Failed to open Histogram file.");
+         return -1;
+    }
+    char* line;
+    char* value;
+    int col;
+    int row = 0;
+    while ((line = fgets(buffer, sizeof(buffer), dataFile)) != NULL) {
+        // ignore the first row, which is a header.
+        if (row > 0) {
+            col = 0;
+            value = strtok(line, ",");
+            while (value != NULL) {
+                // ignore first column, which is a header
+                if (col > 0) {
+                    grid[(row-1) * histSize + (col-1)] = atol(value);
+                }
+                value = strtok(NULL, ",");
+                col++;
+            }
+        }
+        row++;
+    }
+    return 1;
+}
+
 int main(int argc, char **argv) {
 
     if (argc != 3) {
@@ -119,36 +178,14 @@ int main(int argc, char **argv) {
 
     double binSize = 1.0 / histSize;
 
-    // read the binary file and perform binning
-    printf("reading file...\n");
-    FILE *dataFile = fopen("points_noise_normal.bin", "rb");
-    if (!dataFile) {
-        printf("Unable to open data file.");
-        return -1;
-    }
+    // readBinaryFile("points_noise_normal.bin", grid, histSize);
+    readHistogramCsvFile("gridHistogram-test.csv", grid, histSize);
 
-    while(!feof(dataFile)) {
-        float x;
-        float y;
-        fread(&x, 1, sizeof(float), dataFile);
-        fread(&y, 1, sizeof(float), dataFile);
-        // get bins
-        int xpos = (int) (x * (histSize - 1));
-        int ypos = (int) (y * (histSize - 1));
-        //
- 
-        if (ypos * histSize + xpos < histSize * histSize) {
-            grid[ypos * histSize + xpos] += 1;
-        } else {
-            printf("Happy hunting %d %d because of %f %f", xpos, ypos, x, y);
-        }
-        
-    }
     printf("-----\n");
     printf("%lu %lu\n", grid[200], grid[201]);
     printf("-----\n");
-    fclose(dataFile);
 
+    /*
     // allocate histograms to device memory
     long* d_histIn  = NULL;
     long* d_histOut = NULL;
@@ -168,11 +205,11 @@ int main(int argc, char **argv) {
 
     printf("calling kernel...\n");
     //medianFilterGPU<<<dimGrid, dimBlock, BLOCKSIZE*BLOCKSIZE*windSize*windSize*sizeof(long)>>>(d_histIn, d_histOut, histSize, windSize);
-    medianFilterGPU<<<dimGrid, dimBlock>>>(d_histIn, d_histOut, histSize, windSize);
-    
+    // medianFilterGPU<<<dimGrid, dimBlock>>>(d_histIn, d_histOut, histSize, windSize);
+
     gpuErrchk( cudaPeekAtLastError() );
-    gpuErrchk( cudaDeviceSynchronize() );   
-    
+    gpuErrchk( cudaDeviceSynchronize() );
+
     // cudaDeviceSynchronize();
 
     printf("completed kernel call.\n");
@@ -205,8 +242,10 @@ int main(int argc, char **argv) {
     }
     fclose(f);
     printf("generated output\n");
+    */
 
     free(grid);
     free(grid2);
+
 
 }
