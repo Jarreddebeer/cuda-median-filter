@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
-#define BLOCKSIZE 32
+#define BLOCKSIZE 16
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -34,7 +34,7 @@ __device__ int sort(long values[], int start, int stop) {
     return j;
 }
 
-__device__ long getMedian(long values[], int size) {    
+__device__ long getMedian(long values[], int size) {
     int start = 0;
     int stop = size - 1;
     int middle = (start + stop) / 2;
@@ -53,18 +53,69 @@ __device__ long getMedian(long values[], int size) {
     return values[pivot];
 }
 
-__global__ void medianFilterGPU(long* histIn, long* histOut, int histSize, int windSize) {
-//__global__ void medianFilterGPU() {
+__global__ void medianFilterGPU(long* d_in, long* d_out, int histSize, int windSize) {
 
-    int x = blockDim.x * blockIdx.x + threadIdx.x;
-    int y = blockDim.y * blockIdx.y + threadIdx.y;
-    // int t = blockDim.y * threadIdx.y + threadIdx.x;
-    long window[81];
-    // __shared__ long window[blockDim.x * blockDim.y * windSize * windSize];
-    int gy, gx, w_idx;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    int x = blockDim.x * blockIdx.x + tx;
+    int y = blockDim.y * blockIdx.y + ty;
 
-    __shared__ long hist[32 * 32];
-    
+    // are we at a boundary?
+    bool is_x_top = (tx == 0), is_x_bot = (tx == BLOCKSIZE-1);
+    bool is_y_top = (ty == 0), is_y_bot = (ty == BLOCKSIZE-1);
+
+    // window length is 9. so it overflows by 4 on each side.
+    __shared__ long smem[BLOCKSIZE+8][BLOCKSIZE+8];
+
+    // populate shared memory from histogram (histogram is padded with zeros)
+    if (is_x_top) {
+        for (int i = 0; i < 4; i++) smem[ty][i] = d_in[(y+4) * (histSize+8) + (x+4-(i+1))];
+
+    } else if (is_x_bot) {
+        for (int i = 0; i < 4; i++) smem[ty][BLOCKSIZE+i] = d_in[(y+4) * (histSize+8) + (x+4+(i+1))];
+    }
+    if (is_y_top) {
+        for (int i = 0; i < 4; i++) smem[i][tx] = d_in[(y+4-(i+1)) * (histSize+8) + (x+4)];
+
+        // corner cases
+        if (is_x_top) {
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    smem[i][j] = d_in[(y+4-(i+1)) * (histSize+8) + (x+4-(j+1))];
+                }
+            }
+        }
+
+        else if (is_x_bot) {
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    smem[i][j] = d_in[(y+4-(i+1)) * (histSize+8) + (x+4+(j+1))];
+                }
+            }
+        }
+
+    } else if (is_y_bot) {
+        for (int i = 0; i < 4; i++) smem[BLOCKSIZE+i][tx] = d_in[(y+4+(i+1)) * (histSize+8) + (x+4)];
+
+        // corner cases
+        if (is_x_top) {
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    smem[i][j] = d_in[(y+4+(i+1)) * (histSize+8) + (x+4-(j+1))];
+                }
+            }
+        }
+
+        else if (is_x_bot) {
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    smem[i][j] = d_in[(y+4+(i+1)) * (histSize+8) + (x+4+(j+1))];
+                }
+            }
+        }
+    }
+
+    /*
     // first copy the data into the histograph
 
     hist[y * histSize + x] = histIn[y * histSize + x];
@@ -87,16 +138,18 @@ __global__ void medianFilterGPU(long* histIn, long* histOut, int histSize, int w
         }
     }
 
-    long median = getMedian(window, windSize * windSize);    
+    long median = getMedian(window, windSize * windSize);
     histOut[y * histSize + x] = median;
-    
+
     __syncthreads();
+    */
 
 }
 
 // read the binary file and perform binning
-int readBinaryFile(const char* filename, long* grid, int histSize) {
+int readBinaryFile(const char* filename, long* grid, int histSize, int windSize) {
     printf("reading file...\n");
+    int bloat = windSize / 2;
     FILE *dataFile = fopen(filename, "rb");
     if (!dataFile) {
         printf("Unable to open data file.");
@@ -111,19 +164,16 @@ int readBinaryFile(const char* filename, long* grid, int histSize) {
         int xpos = (int) (x * (histSize - 1));
         int ypos = (int) (y * (histSize - 1));
         //
-        if (ypos * histSize + xpos < histSize * histSize) {
-            grid[ypos * histSize + xpos] += 1;
-        } else {
-            printf("Happy hunting %d %d because of %f %f", xpos, ypos, x, y);
-        }
+        grid[(ypos+bloat) * (histSize+windSize-1) + (xpos+bloat)] += 1;
     }
     fclose(dataFile);
     return 1;
 }
 
 // read the already written CSV histogram
-int readHistogramCsvFile(const char* filename, long* grid, int histSize) {
+int readHistogramCsvFile(const char* filename, long* grid, int histSize, int windSize) {
     printf("Reading histogram file...\n");
+    int bloat = windSize / 2;
     char buffer[10240];
     FILE *dataFile = fopen(filename, "r");
     if (dataFile == NULL) {
@@ -142,7 +192,7 @@ int readHistogramCsvFile(const char* filename, long* grid, int histSize) {
             while (value != NULL) {
                 // ignore first column, which is a header
                 if (col > 0) {
-                    grid[(row-1) * histSize + (col-1)] = atol(value);
+                    grid[((row-1)+bloat) * (histSize+windSize-1) + ((col-1)+bloat)] = atol(value);
                 }
                 value = strtok(NULL, ",");
                 col++;
@@ -169,9 +219,9 @@ int main(int argc, char **argv) {
     if (windSize % 2 == 0) windSize++;
 
     // initialise the grid
-    long* grid = (long*) malloc(histSize * histSize * sizeof(long));
-    long* grid2 = (long*) malloc(histSize * histSize * sizeof(long));
-    for (int i = 0; i < histSize * histSize; i++) {
+    long* grid = (long*) malloc( (histSize+windSize-1)*(histSize+windSize-1) * sizeof(long));
+    long* grid2 = (long*) malloc((histSize+windSize-1)*(histSize+windSize-1) * sizeof(long));
+    for (int i = 0; i < (histSize+windSize-1)*(histSize+windSize-1); i++) {
         grid[i] = 0;
         grid2[i] = 0;
     }
@@ -179,10 +229,10 @@ int main(int argc, char **argv) {
     double binSize = 1.0 / histSize;
 
     // readBinaryFile("points_noise_normal.bin", grid, histSize);
-    readHistogramCsvFile("gridHistogram-test.csv", grid, histSize);
+    readHistogramCsvFile("gridHistogram-512.csv", grid, histSize, windSize);
 
     printf("-----\n");
-    printf("%lu %lu\n", grid[200], grid[201]);
+    printf("%lu %lu\n", grid[200000], grid[268314]);
     printf("-----\n");
 
     /*
