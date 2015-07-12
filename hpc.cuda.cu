@@ -64,24 +64,25 @@ __global__ void medianFilterGPU(long* d_in, long* d_out, int histSize, int windS
     bool is_x_top = (tx == 0), is_x_bot = (tx == BLOCKSIZE-1);
     bool is_y_top = (ty == 0), is_y_bot = (ty == BLOCKSIZE-1);
 
+
     // window length is 9. so it overflows by 4 on each side.
     __shared__ long smem[BLOCKSIZE+8][BLOCKSIZE+8];
 
     // populate shared memory from histogram (histogram is padded with zeros)
     if (is_x_top) {
-        for (int i = 0; i < 4; i++) smem[ty][i] = d_in[(y+4) * (histSize+8) + (x+4-(i+1))];
+        for (int i = 0; i < 4; i++) smem[4+ty][i] = d_in[(y+4) * (histSize+8) + (x+4)]; // d_in[(y+4) * (histSize+8) + (x+4-(i+1))];
 
     } else if (is_x_bot) {
-        for (int i = 0; i < 4; i++) smem[ty][BLOCKSIZE+i] = d_in[(y+4) * (histSize+8) + (x+4+(i+1))];
+        for (int i = 0; i < 4; i++) smem[4+ty][4+BLOCKSIZE+i] = d_in[(y+4) * (histSize+8) + (x+4)];
     }
     if (is_y_top) {
-        for (int i = 0; i < 4; i++) smem[i][tx] = d_in[(y+4-(i+1)) * (histSize+8) + (x+4)];
+        for (int i = 0; i < 4; i++) smem[i][4+tx] = d_in[(y+4) * (histSize+8) + (x+4)];
 
         // corner cases
         if (is_x_top) {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
-                    smem[i][j] = d_in[(y+4-(i+1)) * (histSize+8) + (x+4-(j+1))];
+                    smem[i][j] = d_in[(y+4) * (histSize+8) + (x+4)];
                 }
             }
         }
@@ -89,19 +90,19 @@ __global__ void medianFilterGPU(long* d_in, long* d_out, int histSize, int windS
         else if (is_x_bot) {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
-                    smem[i][j] = d_in[(y+4-(i+1)) * (histSize+8) + (x+4+(j+1))];
+                    smem[i][4+BLOCKSIZE+j] = d_in[(y+4) * (histSize+8) + (x+4)];
                 }
             }
         }
 
     } else if (is_y_bot) {
-        for (int i = 0; i < 4; i++) smem[BLOCKSIZE+i][tx] = d_in[(y+4+(i+1)) * (histSize+8) + (x+4)];
+        for (int i = 0; i < 4; i++) smem[4+BLOCKSIZE+i][4+tx] = d_in[(y+4) * (histSize+8) + (x+4)];
 
         // corner cases
         if (is_x_top) {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
-                    smem[i][j] = d_in[(y+4+(i+1)) * (histSize+8) + (x+4-(j+1))];
+                    smem[4+BLOCKSIZE+i][j] = d_in[(y+4) * (histSize+8) + (x+4)];
                 }
             }
         }
@@ -109,11 +110,46 @@ __global__ void medianFilterGPU(long* d_in, long* d_out, int histSize, int windS
         else if (is_x_bot) {
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
-                    smem[i][j] = d_in[(y+4+(i+1)) * (histSize+8) + (x+4+(j+1))];
+                    smem[4+BLOCKSIZE+i][4+BLOCKSIZE+j] = d_in[(y+4) * (histSize+8) + (x+4)];
                 }
             }
         }
     }
+
+    smem[4+ty][4+tx] = d_in[(y+4) * (histSize+windSize-1) + (x+4)];
+
+    /*
+    __syncthreads();
+
+    if (tx == 8 && ty == 8) {
+        for (int i = 0; i < 24; i++) {
+            for (int j = 0; j < 24; j++) {
+                long val = smem[i][j];
+                printf("%lu ", val);
+            }
+            printf("\n");
+        }
+    }
+    */
+
+    __syncthreads();
+
+    // get window from shared memory
+    long v[81 * sizeof(long)] = {};
+    int idx = 0;
+    for (int i = -4; i <= 4; i++) {
+        for (int j = -4; j <= 4; j++) {
+            v[idx++] = smem[(ty+4) + i][(tx+4) + j];
+        }
+    }
+
+    __syncthreads();
+
+    long med = getMedian(v, 81);
+    d_out[y * histSize + x] = med;
+
+
+
 
     /*
     // first copy the data into the histograph
@@ -220,10 +256,10 @@ int main(int argc, char **argv) {
 
     // initialise the grid
     long* grid = (long*) malloc( (histSize+windSize-1)*(histSize+windSize-1) * sizeof(long));
-    long* grid2 = (long*) malloc((histSize+windSize-1)*(histSize+windSize-1) * sizeof(long));
+    long* grid2 = (long*) malloc(histSize * histSize * sizeof(long));
     for (int i = 0; i < (histSize+windSize-1)*(histSize+windSize-1); i++) {
         grid[i] = 0;
-        grid2[i] = 0;
+//      grid2[i] = 0; // note, will break in this loop now
     }
 
     double binSize = 1.0 / histSize;
@@ -231,43 +267,47 @@ int main(int argc, char **argv) {
     // readBinaryFile("points_noise_normal.bin", grid, histSize);
     readHistogramCsvFile("gridHistogram-512.csv", grid, histSize, windSize);
 
+    // sanity check
     printf("-----\n");
-    printf("%lu %lu\n", grid[200000], grid[268314]);
+    printf("%lu %lu\n", grid[100], grid[200]);
     printf("-----\n");
 
-    /*
     // allocate histograms to device memory
     long* d_histIn  = NULL;
     long* d_histOut = NULL;
-    cudaMalloc(&d_histIn,  histSize * histSize * sizeof(long));
+    printf("-----\n");
+    printf("%d\n", histSize+windSize-1);
+    printf("-----\n");
+    cudaMalloc(&d_histIn,  (histSize+windSize-1) * (histSize+windSize-1) * sizeof(long));
     cudaMalloc(&d_histOut, histSize * histSize * sizeof(long));
 
     // copy memory into device histograms
-    cudaMemcpy(d_histIn, grid, histSize * histSize * sizeof(long), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_histIn, grid, (histSize+windSize-1) * (histSize+windSize-1) * sizeof(long), cudaMemcpyHostToDevice);
     cudaMemcpy(d_histOut, grid2, histSize * histSize * sizeof(long), cudaMemcpyHostToDevice);
 
     dim3 dimBlock = dim3(BLOCKSIZE, BLOCKSIZE, 1);
     dim3 dimGrid = dim3(
-        ceil(histSize / (float) dimBlock.x),
-        ceil(histSize / (float) dimBlock.y),
+        (int) ceil(histSize / (float) dimBlock.x),
+        (int) ceil(histSize / (float) dimBlock.y),
         1
     );
 
     printf("calling kernel...\n");
-    //medianFilterGPU<<<dimGrid, dimBlock, BLOCKSIZE*BLOCKSIZE*windSize*windSize*sizeof(long)>>>(d_histIn, d_histOut, histSize, windSize);
+    medianFilterGPU<<<dimGrid, dimBlock>>>(d_histIn, d_histOut, histSize, windSize);
     // medianFilterGPU<<<dimGrid, dimBlock>>>(d_histIn, d_histOut, histSize, windSize);
 
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
 
-    // cudaDeviceSynchronize();
-
     printf("completed kernel call.\n");
     cudaMemcpy(grid2, d_histOut, histSize * histSize * sizeof(long), cudaMemcpyDeviceToHost);
 
+    cudaFree(d_histIn);
+    cudaFree(d_histOut);
+
     printf("--------\n");
     printf("%lu %lu\n", grid[200], grid[201]);
-    printf("%lu %lu\n", grid2[200], grid2[201]);
+//    printf("%lu %lu\n", grid2[256*256], grid2[256*125]);
     printf("--------\n");
 
     // write results to csv file
@@ -277,25 +317,29 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    // print column headers
-    for (int x = 0; x < histSize-1; x++) {
-        fprintf(f, "%f,", binSize * x);
+    // print column bucket headers
+    fprintf(f, ",");
+    for (int x = 0; x < histSize; x++) {
+        float val = binSize * x;
+        if (x < histSize-1) fprintf(f, "%f,",  val);
+        else                fprintf(f, "%f\n", val);
     }
-    fprintf(f, "%f\n", binSize * (histSize-1));
-    // print the columns
+
+    // print each row
     for (int y = 0; y < histSize; y++) {
-        fprintf(f, "%f", binSize * y);
-        for (int x = 0; x < histSize-1; x++) {
-            fprintf(f, "%lu,", grid2[y * histSize + x]);
+        // first column is a bucket
+        fprintf(f, "%f,", binSize * y);
+        // values
+        for (int x = 0; x < histSize; x++) {
+            long val = grid2[y * histSize + x];
+            if (x < histSize-1) fprintf(f, "%lu,",  val);
+            else                fprintf(f, "%lu\n", val);
         }
-        fprintf(f, "%lu\n", grid2[y * histSize + histSize-1]);
     }
     fclose(f);
     printf("generated output\n");
-    */
 
     free(grid);
     free(grid2);
-
 
 }
