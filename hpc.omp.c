@@ -123,25 +123,30 @@ int main(int argc, char **argv) {
         }
     }
 
-
     // write results to csv file
     FILE *f = fopen("output.csv", "w");
     if (f == NULL) {
         return -1;
     }
 
-    // print column headers
-    for (int x = 0; x < gridSize-1; x++) {
-        fprintf(f, "%f,", binSize * x);
+    // print column bucket headers
+    fprintf(f, ",");
+    for (int x = 0; x < gridSize; x++) {
+        float val = binSize * x;
+        if (x < gridSize-1) fprintf(f, "%f,",  val);
+        else                fprintf(f, "%f\n", val);
     }
-    fprintf(f, "%f\n", binSize * (gridSize-1));
-    // print the columns
+
+    // print each row
     for (int y = 0; y < gridSize; y++) {
-        fprintf(f, "%f", binSize * y);
-        for (int x = 0; x < gridSize-1; x++) {
-            fprintf(f, "%lu,", grid2[y * gridSize + x]);
+        // first column is a bucket
+        fprintf(f, "%f,", binSize * y);
+        // values
+        for (int x = 0; x < gridSize; x++) {
+            long val = grid2[y * gridSize + x];
+            if (x < gridSize-1) fprintf(f, "%lu,",  val);
+            else                fprintf(f, "%lu\n", val);
         }
-        fprintf(f, "%lu\n", grid2[y * gridSize + gridSize-1]);
     }
     fclose(f);
 
