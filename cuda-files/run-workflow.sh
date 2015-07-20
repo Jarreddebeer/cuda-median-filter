@@ -1,31 +1,30 @@
-gridsizes=(512, 1024, 2048, 4096)
-windowsizes=(3, 5, 15, 21)
+gridsizes=(512 1024 2048 4096)
+windowsizes=(3 5 15 21)
 
 rm results.csv
 touch results.csv
 
 for w in "${windowsizes[@]}"
 do
-    echo ",$w" >> results.csv
+    printf ",$w" >> results.csv
 done
 
-echo "\n" >> results.csv
+printf "\n" >> results.csv
 
 for g in "${gridsizes[@]}"
 do
-    echo "$g" >> results.csv
+    printf "$g" >> results.csv
     for w in "${windowsizes[@]}"
     do
         # make
-        echo "$w $g" >> output.csv
         mv $g/hpc.cuda-$g-$w.cu .
         make cuda
-        echo "," >> results.csv
+        printf "," >> results.csv
 
-        # execute
-        time -p ./cuda $g $w | head -n 1 | cut -d " " -f 2 >> results.csv
+        # execute and record
+        (TIMEFORMAT="%R"; time ./cuda $g $w) |& xargs printf >> results.csv
 
-        # create histograms
+        # # create histograms
         python ../histogram.py output.csv $g $w
 
         # clean up
@@ -34,5 +33,5 @@ do
         rm *.o
         mv hpc.cuda-$g-$w.cu $g/hpc.cuda-$g-$w.cu
     done
-    echo "\n" >> results.csv
+    printf "\n" >> results.csv
 done
