@@ -1,6 +1,9 @@
 gridsizes=(512, 1024, 2048, 4096)
 windowsizes=(3, 5, 15, 21)
 
+rm results.csv
+touch results.csv
+
 for w in "${windowsizes[@]}"
 do
     echo ",$w" >> results.csv
@@ -23,7 +26,7 @@ do
         time -p ./cuda $g $w | head -n 1 | cut -d " " -f 2 >> results.csv
 
         # create histograms
-        python ../histogram.py output.csv histograms/$g-$w.png
+        python ../histogram.py output.csv $g $w
 
         # clean up
         mv output.csv results/$g-$w.csv
