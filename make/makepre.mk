@@ -5,8 +5,8 @@ CFLAGS=-m64 -fopenmp -lineinfo -std=c++11
 # -std=c++11 #had to take this out cos it doesn’t work on hex =/
 LFLAGS=
 
-NVCCFLAGS=-m64 -Xcompiler -fopenmp -Xcompiler -lineinfo --generate-line-info 
-NVCLFLAGS=-link -lineinfo --generate-line-info
+NVCCFLAGS=-m64 -Xcompiler -fopenmp -Xcompiler -lineinfo --generate-line-info -arch=sm_20
+NVCLFLAGS=-link -lineinfo --generate-line-info -arch=sm_20
 OMPLFLAGS=-lgomp
 
 CUDA_PATH ?= /usr/local/cuda
