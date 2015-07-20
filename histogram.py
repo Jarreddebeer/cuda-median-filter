@@ -43,8 +43,6 @@ def read_2D(fname) :
     return (X1, Y1, Z)
 
 print 'Reading:', str(sys.argv[1])
-gridSize = sys.argv[2]
-windSize = sys.argv[3]
 
 HisX,HisY,HisZ = read_2D(sys.argv[1])
 
@@ -70,8 +68,9 @@ plt.tight_layout()
 
 if True :
   fi=0
-  nm="histograms/%s-%s.png" % (gridSize, windSize)
+  nm="histogram.png"
   savefig(nm)
 
 # plt.show()
+
 
