@@ -5,28 +5,28 @@ int cmpfunction(const void* a, const void* b) {
     return ( *(int*)a - *(int*)b );
 }
 
-int sort(long* values, int start, int stop) {
-    int bSize = sizeof(long);
-    long pivot = values[start];
+int sort(int* values, int start, int stop) {
+    int bSize = sizeof(int);
+    int pivot = values[start];
     int i = start;
     int j = stop+1;
     while (1) {
         while (values[++i] < pivot) if (i == stop) break;
         while (values[--j] >= pivot) if (j == start) break;
         if (i >= j) break;
-        long tmp = values[i];
+        int tmp = values[i];
         values[i] = values[j];
         values[j] = tmp;
     }
     // place the pivot back
-    long tmp = values[j];
+    int tmp = values[j];
     values[j] = pivot;
     values[start] = tmp;
 
     return j;
 }
 
-int getMedian(long* values, int size) {
+int getMedian(int* values, int size) {
     int middle = size / 2;
     int start = 0;
     int stop = size-1;
@@ -61,8 +61,8 @@ int main(int argc, char **argv) {
     if (windSize % 2 == 0) windSize++;
 
     // initialise the grid
-    long* grid = (long*) malloc(gridSize * gridSize * sizeof(long));
-    long* grid2 = (long*) malloc(gridSize * gridSize * sizeof(long));
+    int* grid = (int*) malloc(gridSize * gridSize * sizeof(int));
+    int* grid2 = (int*) malloc(gridSize * gridSize * sizeof(int));
     for (int i = 0; i < gridSize * gridSize; i++) {
         grid[i] = 0;
         grid2[i] = 0;
@@ -76,8 +76,8 @@ int main(int argc, char **argv) {
         printf("Unable to open data file.");
         return -1;
     }
-    int count = 0;
-    while(!feof(dataFile) && count < 1000000) {
+    // int count = 0;
+    while(!feof(dataFile)) {
         float x;
         float y;
         fread(&x, sizeof(float), 1, dataFile);
@@ -86,13 +86,13 @@ int main(int argc, char **argv) {
         int xpos = (int) (x / binSize);
         int ypos = (int) (y / binSize);
         //
-        grid[ypos * gridSize + xpos] += 1;
-        count++;
+        grid2[ypos * gridSize + xpos] += 1;
     }
     fclose(dataFile);
 
+    /*
     // initialize the window
-    long* window = (long*) malloc(windSize * windSize * sizeof(long));
+    int* window = (int*) malloc(windSize * windSize * sizeof(int));
 
     // perform smoothing
     for (int y = 0; y < gridSize; y++) {
@@ -115,13 +115,14 @@ int main(int argc, char **argv) {
                 }
             }
 
-            long median = getMedian(window, windSize * windSize);
+            int median = getMedian(window, windSize * windSize);
             grid2[y * gridSize + x] = median;
 
         }
     }
+    */
 
-    free(window);
+    // free(window);
 
 
     // write results to csv file

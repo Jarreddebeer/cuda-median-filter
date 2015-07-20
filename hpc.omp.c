@@ -7,28 +7,28 @@ int cmpfunction(const void* a, const void* b) {
     return ( *(int*)a - *(int*)b );
 }
 
-int sort(long* values, int start, int stop) {
-    int bSize = sizeof(long);
-    long pivot = values[start];
+int sort(int* values, int start, int stop) {
+    int bSize = sizeof(int);
+    int pivot = values[start];
     int i = start;
     int j = stop+1;
     while (1) {
         while (values[++i] < pivot) if (i == stop) break;
         while (values[--j] >= pivot) if (j == start) break;
         if (i >= j) break;
-        long tmp = values[i];
+        int tmp = values[i];
         values[i] = values[j];
         values[j] = tmp;
     }
     // place the pivot back
-    long tmp = values[j];
+    int tmp = values[j];
     values[j] = pivot;
     values[start] = tmp;
 
     return j;
 }
 
-int getMedian(long* values, int size) {
+int getMedian(int* values, int size) {
     int middle = size / 2;
     int start = 0;
     int stop = size-1;
@@ -48,7 +48,7 @@ int getMedian(long* values, int size) {
 }
 
 // read the binary file and perform binning
-int readBinaryFile(const char* filename, long* grid, int histSize, int windSize) {
+int readBinaryFile(const char* filename, int* grid, int histSize, int windSize) {
     printf("reading file...\n");
     FILE *dataFile = fopen(filename, "rb");
     if (!dataFile) {
@@ -71,7 +71,7 @@ int readBinaryFile(const char* filename, long* grid, int histSize, int windSize)
 }
 
 // read the already written CSV histogram
-int readHistogramCsvFile(const char* filename, long* grid, int histSize, int windSize) {
+int readHistogramCsvFile(const char* filename, int* grid, int histSize, int windSize) {
     printf("Reading histogram file...\n");
     char buffer[10240];
     FILE *dataFile = fopen(filename, "r");
@@ -91,7 +91,7 @@ int readHistogramCsvFile(const char* filename, long* grid, int histSize, int win
             while (value != NULL) {
                 // ignore first column, which is a header
                 if (col > 0) {
-                    long num = atol(value);
+                    int num = atol(value);
                     grid[(row-1) * histSize + (col-1)] = num;
                 }
                 value = strtok(NULL, ",");
@@ -120,24 +120,27 @@ int main(int argc, char **argv) {
     if (windSize % 2 == 0) windSize++;
 
     // initialise the grid
-    long* grid = (long*) malloc(gridSize * gridSize * sizeof(long));
-    long* grid2 = (long*) malloc(gridSize * gridSize * sizeof(long));
+    int* grid = (int*) malloc(gridSize * gridSize * sizeof(int));
+    int* grid2 = (int*) malloc(gridSize * gridSize * sizeof(int));
     for (int i = 0; i < gridSize * gridSize; i++) {
         grid[i] = 0;
         grid2[i] = 0;
     }
 
-    double binSize = 1.0 / gridSize;
+    readBinaryFile("points_noise_normal.bin", grid2, gridSize, windSize);
 
-    // readBinaryFile("points_noise_normal.bin", grid, gridSize, windSize);
-    readHistogramCsvFile("gridHistogram-512.csv", grid, gridSize, windSize);
+    double binSize = 1.0 / gridSize;
+    /*
+
+    readBinaryFile("points_noise_normal.bin", grid, gridSize, windSize);
+    // readHistogramCsvFile("gridHistogram-512.csv", grid, gridSize, windSize);
 
     // perform smoothing
     #pragma omp parallel for
     for (int y = 0; y < gridSize; y++) {
         for (int x = 0; x < gridSize; x++) {
 
-            long* window = (long*) malloc(windSize * windSize * sizeof(long));
+            int* window = (int*) malloc(windSize * windSize * sizeof(int));
 
             int w_idx = 0;
             for (int dy = -windSize / 2; dy <= windSize / 2; dy++) {
@@ -156,13 +159,14 @@ int main(int argc, char **argv) {
                 }
             }
 
-            long median = getMedian(window, windSize * windSize);
+            int median = getMedian(window, windSize * windSize);
             grid2[y * gridSize + x] = median;
 
             free(window);
 
         }
     }
+    */
 
     // write results to csv file
     FILE *f = fopen("output.csv", "w");
@@ -184,7 +188,7 @@ int main(int argc, char **argv) {
         fprintf(f, "%f,", binSize * y);
         // values
         for (int x = 0; x < gridSize; x++) {
-            long val = grid2[y * gridSize + x];
+            int val = grid2[y * gridSize + x];
             if (x < gridSize-1) fprintf(f, "%lu,",  val);
             else                fprintf(f, "%lu\n", val);
         }
