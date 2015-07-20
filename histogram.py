@@ -11,7 +11,7 @@ def read_2D(fname) :
   nox    = 0
   noy    = 0
   lineNo = 0
-  rownum = 0  
+  rownum = 0
   X=[]
   Y=[]
   Z=[]
@@ -35,7 +35,7 @@ def read_2D(fname) :
         colnum = colnum +1
       if rownum != 0 :
         Z.append(vector)
-      rownum = rownum + 1 
+      rownum = rownum + 1
     X = np.array(X)
     Y = np.array(Y)
     X1, Y1 = np.meshgrid(X,Y)
@@ -43,6 +43,8 @@ def read_2D(fname) :
     return (X1, Y1, Z)
 
 print 'Reading:', str(sys.argv[1])
+gridSize = sys.argv[2]
+windSize = sys.argv[3]
 
 HisX,HisY,HisZ = read_2D(sys.argv[1])
 
@@ -68,12 +70,8 @@ plt.tight_layout()
 
 if True :
   fi=0
-  nm="./Histogram_Bins[%04i]_v%03i.png" % (noBin,fi)
-  while os.path.isfile(nm):
-    fi+=1
-    nm="./Histogram_Bins[%04i]_v%03i.png" % (noBin,fi)
-  print 'Writing histogram to :', str(nm)
+  nm="histograms/%s-%s.png" % (gridSize, windSize)
   savefig(nm)
 
-plt.show()
+# plt.show()
 

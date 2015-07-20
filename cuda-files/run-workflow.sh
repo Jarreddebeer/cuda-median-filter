@@ -13,11 +13,19 @@ do
     echo "$g" >> results.csv
     for w in "${windowsizes[@]}"
     do
+        # make
         echo "$w $g" >> output.csv
         mv $g/hpc.cuda-$g-$w.cu .
         make cuda
         echo "," >> results.csv
+
+        # execute
         time -p ./cuda $g $w | head -n 1 | cut -d " " -f 2 >> results.csv
+
+        # create histograms
+        python ../histogram.py output.csv histograms/$g-$w.png
+
+        # clean up
         mv output.csv results/$g-$w.csv
         rm cuda
         rm *.o
