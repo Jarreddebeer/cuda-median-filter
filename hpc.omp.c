@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <omp.h>
 
 int cmpfunction(const void* a, const void* b) {
@@ -46,6 +47,63 @@ int getMedian(long* values, int size) {
     return values[pivot];
 }
 
+// read the binary file and perform binning
+int readBinaryFile(const char* filename, long* grid, int histSize, int windSize) {
+    printf("reading file...\n");
+    FILE *dataFile = fopen(filename, "rb");
+    if (!dataFile) {
+        printf("Unable to open data file.");
+        return -1;
+    }
+    while(!feof(dataFile)) {
+        float x;
+        float y;
+        fread(&x, 1, sizeof(float), dataFile);
+        fread(&y, 1, sizeof(float), dataFile);
+        // get bins
+        int xpos = (int) (x * (histSize - 1));
+        int ypos = (int) (y * (histSize - 1));
+        //
+        grid[ypos * histSize + xpos] += 1;
+    }
+    fclose(dataFile);
+    return 1;
+}
+
+// read the already written CSV histogram
+int readHistogramCsvFile(const char* filename, long* grid, int histSize, int windSize) {
+    printf("Reading histogram file...\n");
+    char buffer[10240];
+    FILE *dataFile = fopen(filename, "r");
+    if (dataFile == NULL) {
+         printf("Failed to open Histogram file.");
+         return -1;
+    }
+    char* line;
+    char* value;
+    int col;
+    int row = 0;
+    while ((line = fgets(buffer, sizeof(buffer), dataFile)) != NULL) {
+        // ignore the first row, which is a header.
+        if (row > 0) {
+            col = 0;
+            value = strtok(line, ",");
+            while (value != NULL) {
+                // ignore first column, which is a header
+                if (col > 0) {
+                    long num = atol(value);
+                    grid[(row-1) * histSize + (col-1)] = num;
+                }
+                value = strtok(NULL, ",");
+                col++;
+            }
+        }
+        row++;
+    }
+    printf("returning\n");
+    return 1;
+}
+
 int main(int argc, char **argv) {
 
     if (argc != 3) {
@@ -71,25 +129,8 @@ int main(int argc, char **argv) {
 
     double binSize = 1.0 / gridSize;
 
-    // read the binary file and perform binning
-    FILE *dataFile = fopen("points_noise_normal.bin", "rb");
-    if (!dataFile) {
-        printf("Unable to open data file.");
-        return -1;
-    }
-
-    while(!feof(dataFile)) {
-        float x;
-        float y;
-        fread(&x, sizeof(float), 1, dataFile);
-        fread(&y, sizeof(float), 1, dataFile);
-        // get bins
-        int xpos = (int) (x * (gridSize-1));
-        int ypos = (int) (y * (gridSize-1));
-        //
-        grid[ypos * gridSize + xpos] += 1;
-    }
-    fclose(dataFile);
+    // readBinaryFile("points_noise_normal.bin", grid, gridSize, windSize);
+    readHistogramCsvFile("gridHistogram-512.csv", grid, gridSize, windSize);
 
     // perform smoothing
     #pragma omp parallel for

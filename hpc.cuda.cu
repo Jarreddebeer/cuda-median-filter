@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
-#define BLOCKSIZE 16
+#define BLOCKSIZE 64
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -206,6 +206,38 @@ int readBinaryFile(const char* filename, long* grid, int histSize, int windSize)
     return 1;
 }
 
+int outputResultsToFile(const char* filename, long* grid2, int histSize) {
+
+    double binSize = 1.0 / histSize;
+
+    FILE *f = fopen(filename, "w");
+    if (f == NULL) {
+        return -1;
+    }
+
+    // print column bucket headers
+    fprintf(f, ",");
+    for (int x = 0; x < histSize; x++) {
+        float val = binSize * x;
+        if (x < histSize-1) fprintf(f, "%f,",  val);
+        else                fprintf(f, "%f\n", val);
+    }
+
+    // print each row
+    for (int y = 0; y < histSize; y++) {
+        // first column is a bucket
+        fprintf(f, "%f,", binSize * y);
+        // values
+        for (int x = 0; x < histSize; x++) {
+            long val = grid2[y * histSize + x];
+            if (x < histSize-1) fprintf(f, "%lu,",  val);
+            else                fprintf(f, "%lu\n", val);
+        }
+    }
+    fclose(f);
+    return 1;
+}
+
 // read the already written CSV histogram
 int readHistogramCsvFile(const char* filename, long* grid, int histSize, int windSize) {
     printf("Reading histogram file...\n");
@@ -259,25 +291,14 @@ int main(int argc, char **argv) {
     long* grid2 = (long*) malloc(histSize * histSize * sizeof(long));
     for (int i = 0; i < (histSize+windSize-1)*(histSize+windSize-1); i++) {
         grid[i] = 0;
-//      grid2[i] = 0; // note, will break in this loop now
     }
-
-    double binSize = 1.0 / histSize;
 
     // readBinaryFile("points_noise_normal.bin", grid, histSize);
     readHistogramCsvFile("gridHistogram-512.csv", grid, histSize, windSize);
 
-    // sanity check
-    printf("-----\n");
-    printf("%lu %lu\n", grid[100], grid[200]);
-    printf("-----\n");
-
     // allocate histograms to device memory
     long* d_histIn  = NULL;
     long* d_histOut = NULL;
-    printf("-----\n");
-    printf("%d\n", histSize+windSize-1);
-    printf("-----\n");
     cudaMalloc(&d_histIn,  (histSize+windSize-1) * (histSize+windSize-1) * sizeof(long));
     cudaMalloc(&d_histOut, histSize * histSize * sizeof(long));
 
@@ -294,7 +315,6 @@ int main(int argc, char **argv) {
 
     printf("calling kernel...\n");
     medianFilterGPU<<<dimGrid, dimBlock>>>(d_histIn, d_histOut, histSize, windSize);
-    // medianFilterGPU<<<dimGrid, dimBlock>>>(d_histIn, d_histOut, histSize, windSize);
 
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
@@ -305,38 +325,9 @@ int main(int argc, char **argv) {
     cudaFree(d_histIn);
     cudaFree(d_histOut);
 
-    printf("--------\n");
-    printf("%lu %lu\n", grid[200], grid[201]);
-//    printf("%lu %lu\n", grid2[256*256], grid2[256*125]);
-    printf("--------\n");
-
     // write results to csv file
     printf("generating output...\n");
-    FILE *f = fopen("output.csv", "w");
-    if (f == NULL) {
-        return -1;
-    }
-
-    // print column bucket headers
-    fprintf(f, ",");
-    for (int x = 0; x < histSize; x++) {
-        float val = binSize * x;
-        if (x < histSize-1) fprintf(f, "%f,",  val);
-        else                fprintf(f, "%f\n", val);
-    }
-
-    // print each row
-    for (int y = 0; y < histSize; y++) {
-        // first column is a bucket
-        fprintf(f, "%f,", binSize * y);
-        // values
-        for (int x = 0; x < histSize; x++) {
-            long val = grid2[y * histSize + x];
-            if (x < histSize-1) fprintf(f, "%lu,",  val);
-            else                fprintf(f, "%lu\n", val);
-        }
-    }
-    fclose(f);
+    outputResultsToFile("output.csv", grid2, histSize);
     printf("generated output\n");
 
     free(grid);
