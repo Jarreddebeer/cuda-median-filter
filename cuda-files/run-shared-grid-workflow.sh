@@ -1,4 +1,4 @@
-gridsizes=(512 1024 2048 4096)
+gridsizes=(4096)
 windowsizes=(3 5 15 21)
 
 rm shared-grid/results.csv
@@ -22,11 +22,11 @@ do
         printf "," >> shared-grid/results.csv
 
         # execute and record
-        (TIMEFORMAT="%R"; time ./cuda $g $w) |& xargs printf >> shared-grid/results.csv
+        (TIMEFORMAT="%R"; time ./cuda $g $w) |& tail -n 1 | tr -d '\n' >> shared-grid/results.csv
 
         # # create histograms
-        python ../histogram.py output.csv $g $w
-        mv histogram.png shared-grid/histograms/
+        # python ../histogram.py output.csv $g $w
+        # mv histogram.png shared-grid/histograms/
 
         # clean up
         mv output.csv shared-grid/results/$g-$w.csv

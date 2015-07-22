@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <omp.h>
 
 int cmpfunction(const void* a, const void* b) {
     return ( *(int*)a - *(int*)b );
@@ -47,33 +46,10 @@ int getMedian(int* values, int size) {
     return values[pivot];
 }
 
-// read the binary file and perform binning
-int readBinaryFile(const char* filename, int* grid, int histSize, int windSize) {
-    printf("reading file...\n");
-    FILE *dataFile = fopen(filename, "rb");
-    if (!dataFile) {
-        printf("Unable to open data file.");
-        return -1;
-    }
-    while(!feof(dataFile)) {
-        float x;
-        float y;
-        fread(&x, 1, sizeof(float), dataFile);
-        fread(&y, 1, sizeof(float), dataFile);
-        // get bins
-        int xpos = (int) (x * (histSize - 1));
-        int ypos = (int) (y * (histSize - 1));
-        //
-        grid[ypos * histSize + xpos] += 1;
-    }
-    fclose(dataFile);
-    return 1;
-}
-
 // read the already written CSV histogram
 int readHistogramCsvFile(const char* filename, int* grid, int histSize, int windSize) {
     printf("Reading histogram file...\n");
-    char buffer[10240];
+    char buffer[20480];
     FILE *dataFile = fopen(filename, "r");
     if (dataFile == NULL) {
          printf("Failed to open Histogram file.");
@@ -83,6 +59,7 @@ int readHistogramCsvFile(const char* filename, int* grid, int histSize, int wind
     char* value;
     int col;
     int row = 0;
+    int num;
     while ((line = fgets(buffer, sizeof(buffer), dataFile)) != NULL) {
         // ignore the first row, which is a header.
         if (row > 0) {
@@ -91,7 +68,7 @@ int readHistogramCsvFile(const char* filename, int* grid, int histSize, int wind
             while (value != NULL) {
                 // ignore first column, which is a header
                 if (col > 0) {
-                    int num = atol(value);
+                    num = atol(value);
                     grid[(row-1) * histSize + (col-1)] = num;
                 }
                 value = strtok(NULL, ",");
@@ -129,15 +106,14 @@ int main(int argc, char **argv) {
 
     double binSize = 1.0 / gridSize;
 
-    // readBinaryFile("points_noise_normal.bin", grid, gridSize, windSize);
     readHistogramCsvFile("grid-512.csv", grid, gridSize, windSize);
 
+    // initialize the window
+    int* window = (int*) malloc(windSize * windSize * sizeof(int));
+
     // perform smoothing
-    #pragma omp parallel for
     for (int y = 0; y < gridSize; y++) {
         for (int x = 0; x < gridSize; x++) {
-
-            int* window = (int*) malloc(windSize * windSize * sizeof(int));
 
             int w_idx = 0;
             for (int dy = -windSize / 2; dy <= windSize / 2; dy++) {
@@ -159,10 +135,10 @@ int main(int argc, char **argv) {
             int median = getMedian(window, windSize * windSize);
             grid2[y * gridSize + x] = median;
 
-            free(window);
-
         }
     }
+
+    free(window);
 
     // write results to csv file
     FILE *f = fopen("output.csv", "w");
@@ -179,9 +155,9 @@ int main(int argc, char **argv) {
     for (int y = 0; y < gridSize; y++) {
         fprintf(f, "%f", binSize * y);
         for (int x = 0; x < gridSize-1; x++) {
-            fprintf(f, "%lu,", grid2[y * gridSize + x]);
+            fprintf(f, "%d,", grid2[y * gridSize + x]);
         }
-        fprintf(f, "%lu\n", grid2[y * gridSize + gridSize-1]);
+        fprintf(f, "%d\n", grid2[y * gridSize + gridSize-1]);
     }
     fclose(f);
 
@@ -189,4 +165,3 @@ int main(int argc, char **argv) {
     free(grid2);
 
 }
-

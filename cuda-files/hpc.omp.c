@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <omp.h>
 
 int cmpfunction(const void* a, const void* b) {
     return ( *(int*)a - *(int*)b );
@@ -45,6 +47,63 @@ int getMedian(int* values, int size) {
     return values[pivot];
 }
 
+// read the binary file and perform binning
+int readBinaryFile(const char* filename, int* grid, int histSize, int windSize) {
+    printf("reading file...\n");
+    FILE *dataFile = fopen(filename, "rb");
+    if (!dataFile) {
+        printf("Unable to open data file.");
+        return -1;
+    }
+    while(!feof(dataFile)) {
+        float x;
+        float y;
+        fread(&x, 1, sizeof(float), dataFile);
+        fread(&y, 1, sizeof(float), dataFile);
+        // get bins
+        int xpos = (int) (x * (histSize - 1));
+        int ypos = (int) (y * (histSize - 1));
+        //
+        grid[ypos * histSize + xpos] += 1;
+    }
+    fclose(dataFile);
+    return 1;
+}
+
+// read the already written CSV histogram
+int readHistogramCsvFile(const char* filename, int* grid, int histSize, int windSize) {
+    printf("Reading histogram file...\n");
+    char buffer[10240];
+    FILE *dataFile = fopen(filename, "r");
+    if (dataFile == NULL) {
+         printf("Failed to open Histogram file.");
+         return -1;
+    }
+    char* line;
+    char* value;
+    int col;
+    int row = 0;
+    while ((line = fgets(buffer, sizeof(buffer), dataFile)) != NULL) {
+        // ignore the first row, which is a header.
+        if (row > 0) {
+            col = 0;
+            value = strtok(line, ",");
+            while (value != NULL) {
+                // ignore first column, which is a header
+                if (col > 0) {
+                    int num = atol(value);
+                    grid[(row-1) * histSize + (col-1)] = num;
+                }
+                value = strtok(NULL, ",");
+                col++;
+            }
+        }
+        row++;
+    }
+    printf("returning\n");
+    return 1;
+}
+
 int main(int argc, char **argv) {
 
     if (argc != 3) {
@@ -70,33 +129,15 @@ int main(int argc, char **argv) {
 
     double binSize = 1.0 / gridSize;
 
-    // read the binary file and perform binning
-    FILE *dataFile = fopen("points_noise_normal.bin", "rb");
-    if (!dataFile) {
-        printf("Unable to open data file.");
-        return -1;
-    }
-    // int count = 0;
-    while(!feof(dataFile)) {
-        float x;
-        float y;
-        fread(&x, sizeof(float), 1, dataFile);
-        fread(&y, sizeof(float), 1, dataFile);
-        // get bins
-        int xpos = (int) (x / binSize);
-        int ypos = (int) (y / binSize);
-        //
-        grid2[ypos * gridSize + xpos] += 1;
-    }
-    fclose(dataFile);
-
-    /*
-    // initialize the window
-    int* window = (int*) malloc(windSize * windSize * sizeof(int));
+    // readBinaryFile("points_noise_normal.bin", grid, gridSize, windSize);
+    readHistogramCsvFile("grid-512.csv", grid, gridSize, windSize);
 
     // perform smoothing
+    #pragma omp parallel for
     for (int y = 0; y < gridSize; y++) {
         for (int x = 0; x < gridSize; x++) {
+
+            int* window = (int*) malloc(windSize * windSize * sizeof(int));
 
             int w_idx = 0;
             for (int dy = -windSize / 2; dy <= windSize / 2; dy++) {
@@ -118,12 +159,10 @@ int main(int argc, char **argv) {
             int median = getMedian(window, windSize * windSize);
             grid2[y * gridSize + x] = median;
 
+            free(window);
+
         }
     }
-    */
-
-    // free(window);
-
 
     // write results to csv file
     FILE *f = fopen("output.csv", "w");
@@ -131,18 +170,24 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    // print column headers
-    for (int x = 0; x < gridSize-1; x++) {
-        fprintf(f, "%f,", binSize * x);
+    // print column bucket headers
+    fprintf(f, ",");
+    for (int x = 0; x < gridSize; x++) {
+        float val = binSize * x;
+        if (x < gridSize-1) fprintf(f, "%f,",  val);
+        else                fprintf(f, "%f\n", val);
     }
-    fprintf(f, "%f\n", binSize * (gridSize-1));
-    // print the columns
+
+    // print each row
     for (int y = 0; y < gridSize; y++) {
-        fprintf(f, "%f", binSize * y);
-        for (int x = 0; x < gridSize-1; x++) {
-            fprintf(f, "%lu,", grid2[y * gridSize + x]);
+        // first column is a bucket
+        fprintf(f, "%f,", binSize * y);
+        // values
+        for (int x = 0; x < gridSize; x++) {
+            int val = grid2[y * gridSize + x];
+            if (x < gridSize-1) fprintf(f, "%lu,",  val);
+            else                fprintf(f, "%lu\n", val);
         }
-        fprintf(f, "%lu\n", grid2[y * gridSize + gridSize-1]);
     }
     fclose(f);
 
@@ -150,3 +195,4 @@ int main(int argc, char **argv) {
     free(grid2);
 
 }
+

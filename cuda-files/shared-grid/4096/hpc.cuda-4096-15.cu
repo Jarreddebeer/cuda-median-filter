@@ -193,7 +193,7 @@ int outputResultsToFile(const char* filename, int* grid2, int histSize) {
 int readHistogramCsvFile(const char* filename, int* grid, int histSize, int windSize) {
     printf("Reading histogram file...\n");
     int bloat = windSize / 2;
-    char buffer[10240];
+    char buffer[20480];
     FILE *dataFile = fopen(filename, "r");
     if (dataFile == NULL) {
          printf("Failed to open Histogram file.");

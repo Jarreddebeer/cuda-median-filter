@@ -78,13 +78,13 @@ __global__ void medianFilterGPU(int* d_in, int* d_out, int histSize, int windSiz
     int pos = 0;
     for (int i = y_top; i <= y_bot; i++) {
         for (int j = x_left; j <= x_right; j++) {
-            v[idx + pos] = grid[blockDim.x * i + j];
+            v[idx + pos] = d_in[blockDim.x * i + j];
             pos++;
         }
     }
 
     pos--;
-    int med = getMedian(v, idx, idx + pos, start + pos / 2);
+    int med = getMedian(v, idx, idx + pos);
     d_out[y * histSize + x] = med;
 
 }
